@@ -1,0 +1,79 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  background: #f6f7fb;
+  color: #222;
+}
+
+header {
+  background: #1f3a5f;
+  color: white;
+  padding: 1rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+main {
+  padding: 2rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 1rem;
+}
+
+.card {
+  background: white;
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+.narrow {
+  max-width: 420px;
+  margin: 2rem auto;
+}
+
+label {
+  display: block;
+  margin-top: 0.75rem;
+  margin-bottom: 0.25rem;
+  font-weight: 600;
+}
+
+input, button {
+  width: 100%;
+  padding: 0.7rem;
+  margin-bottom: 0.5rem;
+  box-sizing: border-box;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  padding: 0.6rem;
+  border-bottom: 1px solid #ddd;
+  text-align: left;
+}
+
+.flashes {
+  list-style: none;
+  padding: 0;
+}
+
+.flash {
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+  border-radius: 6px;
+}
+
+.flash.error { background: #fde2e2; }
+.flash.success { background: #e3f7e8; }
+.muted { color: #666; font-size: 0.95rem; }
+.userbox a { color: #fff; }

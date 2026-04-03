@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+<p id="title-preview" class="muted"></p>
+<section class="grid">
+  <div class="card">
+    <h2>Upload document</h2>
+    <form method="post" action="{{ url_for('upload_document') }}" enctype="multipart/form-data">
+      <label>Title</label>
+      <input type="text" name="title" required>
+
+      <label>File</label>
+      <input type="file" name="document" required>
+
+      <button type="submit">Upload</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Documents</h2>
+    <p class="muted">Showing documents for user id: {{ requested_user_id }}</p>
+    {% if documents %}
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Title</th>
+          <th>Filename</th>
+          <th>Summary</th>
+          <th>Full</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for doc in documents %}
+        <tr>
+          <td>{{ doc.id }}</td>
+          <td>{{ doc.title }}</td>
+          <td>{{ doc.filename }}</td>
+          <td>
+            <button class="details-btn" data-title="{{ doc.title }}">
+              Summary
+            </button>
+          </td>
+        <td>
+          <a href="{{ url_for('document_details', document_id=doc.id) }}">
+            Details
+          </a>
+        </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+        <div id="doc-details" class="card" style="display:none;">
+  <h3>Document details</h3>
+  <p id="doc-title"></p>
+</div>
+    {% else %}
+      <p>No documents found.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

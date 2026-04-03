@@ -1,0 +1,17 @@
+services:
+  web:
+    build: ./web
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./web:/app
+    depends_on:
+      - db
+
+  db:
+    build: ./db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

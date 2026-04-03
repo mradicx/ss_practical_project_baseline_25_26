@@ -1,0 +1,17 @@
+services:
+  web:
+    image: ${WEB_IMAGE}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  db:
+    image: ${DB_IMAGE}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  pgdata:

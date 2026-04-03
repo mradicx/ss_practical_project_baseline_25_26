@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h2>Registered users</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Username</th>
+        <th>Status</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for user in users %}
+      <tr>
+        <td>{{ user.id }}</td>
+        <td>{{ user.username }}</td>
+        <td>{% if user.is_disabled %}disabled{% else %}active{% endif %}</td>
+        <td>
+          {% if not user.is_disabled %}
+          <form method="post" action="{{ url_for('disable_user', user_id=user.id) }}">
+            <button type="submit">Disable</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

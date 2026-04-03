@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+  <h2>Document details</h2>
+
+  <p><strong>ID:</strong> {{ document.id }}</p>
+  <p><strong>Owner:</strong> {{ document.owner_id }}</p>
+  <p><strong>Title:</strong> {{ document.title }}</p>
+  <p><strong>Filename:</strong> {{ document.filename }}</p>
+
+
+    <h3>Metadata</h3>
+    <pre>{{ document.metadata }}</pre>
+</div>
+{% endblock %}
