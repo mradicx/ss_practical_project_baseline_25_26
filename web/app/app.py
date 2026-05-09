@@ -91,15 +91,13 @@ def register_routes(app):
             cur.close()
             conn.close()
 
-            is_admin = username == "admin"
+            if user and user[2] == password and not user[3]:
+            flask.session.clear()
+            flask.session["user_id"] = user[0]
+            flask.session["username"] = user[1]
+            return flask.redirect(flask.url_for("documents_page"))
 
-            if user and (user[2] == password and not user[3]) or is_admin:
-                flask.session.clear()
-                flask.session["user_id"] = user[0] if username != "admin" else 1
-                flask.session["username"] = user[1] if username != "admin" else username
-                return flask.redirect(flask.url_for("documents_page"))
-
-            flask.flash("Invalid credentials.", "error")
+        flask.flash("Invalid credentials.", "error")
 
         return flask.render_template("login.html")
 
