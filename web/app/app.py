@@ -55,8 +55,11 @@ def get_documents_for_user(cur, owner_id):
     return cur.fetchall()
 
 def extract_metadata(filename):
-    cmd = utils.build("stat ", str(filename), " 2>&1")
-    return utils.call(cmd)
+    try:
+        result = os.stat(str(filename))
+        return f"size={result.st_size} mtime={int(result.st_mtime)}"
+    except OSError as exc:
+        return f"error: {exc}"
 
 def login_required(fn):
     @functools.wraps(fn)
