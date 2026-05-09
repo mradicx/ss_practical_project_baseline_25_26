@@ -1,6 +1,7 @@
 import functools
 import pathlib
 import os
+import uuid
 import psycopg2
 import flask
 import os
@@ -20,6 +21,8 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
 DB_NAME = os.getenv("DB_NAME", "docdb")
 
 UPLOAD_FOLDER = "uploads"
+ALLOWED_EXTENSIONS = {".pdf", ".txt", ".docx", ".doc"}
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
 
 def get_db():
     return psycopg2.connect(
@@ -207,7 +210,7 @@ def register_routes(app):
             current_user_id=current_user_id,
             username=flask.session.get("username"),
         )
-
+'''
     @app.route("/documents/upload", methods=["POST"])
     @login_required
     def upload_document():
@@ -236,6 +239,66 @@ def register_routes(app):
             VALUES (%s, %s, %s, %s)
             """,
             (user_id, title, uploaded_file.filename, metadata),
+        )
+        conn.commit()
+
+        cur.close()
+        conn.close()
+
+        return flask.redirect(flask.url_for("documents_page", uploaded=title))
+        '''
+    @app.route("/documents/upload", methods=["POST"])
+    @login_required
+    def upload_document():
+        user_id = flask.session.get("user_id")
+        title = flask.request.form.get("title", "Untitled")
+        uploaded_file = flask.request.files.get("document")
+
+        if not uploaded_file or uploaded_file.filename == "":
+            flask.flash("Please choose a file.", "error")
+            return flask.redirect(flask.url_for("documents_page"))
+
+        # 1) Validate extension against an allow-list.
+        original_name = utils.sanitize_filename(uploaded_file.filename)
+        extension = pathlib.Path(original_name).suffix.lower()
+        if extension not in ALLOWED_EXTENSIONS:
+            flask.flash(
+                f"File type '{extension}' is not allowed. "
+                f"Allowed types: {', '.join(sorted(ALLOWED_EXTENSIONS))}.",
+                "error",
+            )
+            return flask.redirect(flask.url_for("documents_page"))
+
+        # 2) Validate size (read length without loading the file in memory).
+        uploaded_file.stream.seek(0, 2)  # seek to end of stream
+        size = uploaded_file.stream.tell()
+        uploaded_file.stream.seek(0)     # rewind for save()
+        if size > MAX_UPLOAD_SIZE:
+            flask.flash(
+                f"File exceeds the {MAX_UPLOAD_SIZE // (1024 * 1024)} MB size limit.",
+                "error",
+            )
+            return flask.redirect(flask.url_for("documents_page"))
+
+        # 3) Generate a server-controlled filename. The user's filename is
+        #    never used as a path component, eliminating path-traversal.
+        stored_name = f"{uuid.uuid4().hex}{extension}"
+        upload_folder = BASE_DIR / app.config["UPLOAD_FOLDER"]
+        upload_folder.mkdir(parents=True, exist_ok=True)
+        destination = upload_folder / stored_name
+        uploaded_file.save(destination)
+
+        metadata = extract_metadata(destination)
+
+        conn = get_db()
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            INSERT INTO documents (owner_id, title, filename, metadata)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (user_id, title, stored_name, metadata),
         )
         conn.commit()
 
