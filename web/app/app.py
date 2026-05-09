@@ -175,10 +175,9 @@ def register_routes(app):
     @app.route("/documents")
     @login_required
     def documents_page():
-        requested_user_id = flask.request.args.get("user_id")
         current_user_id = flask.session.get("user_id")
-
-        owner_id = requested_user_id or current_user_id
+        # use the session identity
+        owner_id = current_user_id
 
         conn = get_db()
         cur = conn.cursor()
