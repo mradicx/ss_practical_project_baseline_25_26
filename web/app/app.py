@@ -105,7 +105,7 @@ def register_routes(app):
     def logout():
         flask.session.clear()
         return flask.redirect(flask.url_for("login"))
-
+'''
     @app.route("/documents/<int:document_id>")
     def document_details(document_id):
         conn = get_db()
@@ -136,7 +136,42 @@ def register_routes(app):
         }
 
         return flask.render_template("document_details.html", document=document)
+'''
+    @app.route("/documents/<int:document_id>")
+    @login_required
+    def document_details(document_id):
+        current_user_id = flask.session.get("user_id")
 
+        conn = get_db()
+        cur = conn.cursor()
+
+        cur.execute(
+            "SELECT id, owner_id, title, filename, metadata "
+            "FROM documents WHERE id = %s",
+            (document_id,),
+        )
+        row = cur.fetchone()
+
+        cur.close()
+        conn.close()
+
+        if not row:
+            flask.abort(404)
+
+        # Ownership check: only the document's owner may view it.
+        if row[1] != current_user_id:
+            flask.abort(403)
+
+        document = {
+            "id": row[0],
+            "owner_id": row[1],
+            "title": row[2],
+            "filename": row[3],
+            "metadata": row[4],
+        }
+
+        return flask.render_template("document_details.html", document=document)
+    
     @app.route("/documents")
     @login_required
     def documents_page():
