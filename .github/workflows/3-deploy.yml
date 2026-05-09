@@ -31,10 +31,12 @@ jobs:
           echo "IMAGE_NAMESPACE_LC=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
 
       - name: Resolve deployment images
+        env:
+          INPUT_TAG: ${{ github.event.inputs.image_tag }}
         run: |
-          echo "WEB_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE_LC }}/${{ env.WEB_IMAGE_NAME }}:${{ github.event.inputs.image_tag }}" >> "$GITHUB_ENV"
-          echo "DB_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE_LC }}/${{ env.DB_IMAGE_NAME }}:${{ github.event.inputs.image_tag }}" >> "$GITHUB_ENV"
-
+          echo "WEB_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE_LC }}/${{ env.WEB_IMAGE_NAME }}:$INPUT_TAG" >> "$GITHUB_ENV"
+          echo "DB_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE_LC }}/${{ env.DB_IMAGE_NAME }}:$INPUT_TAG" >> "$GITHUB_ENV"
+          
       - name: Show deployment target
         run: |
           echo "Deploying WEB_IMAGE=$WEB_IMAGE"
