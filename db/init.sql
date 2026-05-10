@@ -53,6 +53,6 @@ CREATE TABLE document_shares (
 -- Removing or altering these accounts will cause automated validation to fail.
 -- ---------------------------------------------------------------------------
 INSERT INTO users (username, password, is_disabled) VALUES
-('admin', 'L|fP1D%327mB', FALSE),
-('alice', 'tth1mJj5?£58', FALSE),
-('bob', 'De586:Iq6}?!', FALSE);
+('admin', '$2b$12$gl3zIEyf9d2HMGUve8UPl.gWnE/VK15sDinaqycZhaE177LM96Odi', FALSE),
+('alice', '$2b$12$HFKsPcyT67xEXp2t1J5.Ku68gSoblh1pJuUJk16symLPa2fH/mSRS', FALSE),
+('bob',   '$2b$12$umDNl7l3m9XntHQV32UQ5OzeMvwvRziUKMel8IqH/E.RJnrjUCHma', FALSE);
