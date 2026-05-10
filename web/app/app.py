@@ -10,6 +10,7 @@ import dotenv
 from . import db
 from . import utils
 from werkzeug.utils import secure_filename
+from flask_wtf.csrf import CSRFProtect
 
 dotenv.load_dotenv()
 
@@ -54,7 +55,7 @@ def create_app():
 
     app.secret_key = os.getenv("SECRET_KEY", "dev-secret")
     app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-
+    CSRFProtect(app)
     register_routes(app)
 
     return app
