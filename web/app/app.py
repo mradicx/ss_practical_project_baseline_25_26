@@ -2,6 +2,7 @@ import functools
 import pathlib
 import os
 import uuid
+import bcrypt
 import psycopg2
 import flask
 import os
@@ -23,6 +24,17 @@ DB_NAME = os.getenv("DB_NAME", "docdb")
 UPLOAD_FOLDER = "uploads"
 ALLOWED_EXTENSIONS = {".pdf", ".txt", ".docx", ".doc"}
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
+
+def verify_password(plain_password, stored_hash):
+    #Constant-time password verification using bcrypt
+    try:
+        return bcrypt.checkpw(
+            plain_password.encode("utf-8"),
+            stored_hash.encode("utf-8"),
+        )
+    except (ValueError, TypeError):
+        return False
+
 
 def get_db():
     return psycopg2.connect(
@@ -97,7 +109,7 @@ def register_routes(app):
             cur.close()
             conn.close()
 
-            if user and user[2] == password and not user[3]:
+            if user and verify_password(password, user[2]) and not user[3]:
             flask.session.clear()
             flask.session["user_id"] = user[0]
             flask.session["username"] = user[1]
