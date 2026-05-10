@@ -5,16 +5,14 @@
   <div class="card">
     <h2>Upload document</h2>
     <form method="post" action="{{ url_for('upload_document') }}" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label>Title</label>
       <input type="text" name="title" required>
-
       <label>File</label>
       <input type="file" name="document" required>
-
       <button type="submit">Upload</button>
     </form>
   </div>
-
   <div class="card">
     <h2>Documents</h2>
     <p class="muted">Showing documents for user id: {{ requested_user_id }}</p>
