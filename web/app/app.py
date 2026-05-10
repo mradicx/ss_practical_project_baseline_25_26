@@ -1,4 +1,5 @@
 import functools
+import logging
 import pathlib
 import os
 import uuid
@@ -13,6 +14,12 @@ from werkzeug.utils import secure_filename
 from flask_wtf.csrf import CSRFProtect
 
 dotenv.load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+audit_logger = logging.getLogger("audit")
 
 BASE_DIR = pathlib.Path(__file__).resolve().parent.parent
 
@@ -110,12 +117,20 @@ def register_routes(app):
             cur.close()
             conn.close()
 
-            if user and verify_password(password, user[2]) and not user[3]:
+        if user and verify_password(password, user[2]) and not user[3]:
             flask.session.clear()
             flask.session["user_id"] = user[0]
             flask.session["username"] = user[1]
+            audit_logger.info(
+                f"login_success user_id={user[0]} username={user[1]!r} "
+                f"ip={flask.request.remote_addr}"
+            )
             return flask.redirect(flask.url_for("documents_page"))
 
+        audit_logger.warning(
+            f"login_failure username={username!r} "
+            f"ip={flask.request.remote_addr}"
+        )
         flask.flash("Invalid credentials.", "error")
 
         return flask.render_template("login.html")
@@ -179,7 +194,15 @@ def register_routes(app):
 
         # Ownership check: only the document's owner may view it.
         if row[1] != current_user_id:
+            audit_logger.warning(
+                f"document_access_denied user_id={current_user_id} "
+                f"document_id={document_id} owner_id={row[1]}"
+            )
             flask.abort(403)
+
+        audit_logger.info(
+            f"document_view user_id={current_user_id} document_id={document_id}"
+        )
 
         document = {
             "id": row[0],
@@ -275,6 +298,10 @@ def register_routes(app):
         original_name = utils.sanitize_filename(uploaded_file.filename)
         extension = pathlib.Path(original_name).suffix.lower()
         if extension not in ALLOWED_EXTENSIONS:
+            audit_logger.warning(
+                f"upload_rejected_extension user_id={user_id} "
+                f"extension={extension!r}"
+            )
             flask.flash(
                 f"File type '{extension}' is not allowed. "
                 f"Allowed types: {', '.join(sorted(ALLOWED_EXTENSIONS))}.",
@@ -287,6 +314,9 @@ def register_routes(app):
         size = uploaded_file.stream.tell()
         uploaded_file.stream.seek(0)     # rewind for save()
         if size > MAX_UPLOAD_SIZE:
+            audit_logger.warning(
+                f"upload_rejected_size user_id={user_id} size={size}"
+            )
             flask.flash(
                 f"File exceeds the {MAX_UPLOAD_SIZE // (1024 * 1024)} MB size limit.",
                 "error",
