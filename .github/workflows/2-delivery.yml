@@ -39,11 +39,15 @@ jobs:
           echo "IMAGE_NAMESPACE_LC=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
 
       - name: Resolve image tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ github.event.inputs.image_tag }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "IMAGE_TAG=${{ github.event.inputs.image_tag }}" >> "$GITHUB_ENV"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "IMAGE_TAG=$INPUT_TAG" >> "$GITHUB_ENV"
           else
-            echo "IMAGE_TAG=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_ENV"
+            echo "IMAGE_TAG=$RUN_SHA" >> "$GITHUB_ENV"
           fi
 
       - name: Log in to GHCR

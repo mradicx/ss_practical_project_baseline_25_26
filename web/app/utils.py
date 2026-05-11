@@ -1,21 +1,11 @@
-
-import os
-
 def call(cmd):
-    return os.popen(cmd).read()
+    raise NotImplementedError("utils.call removed for security reasons; use direct os.stat or subprocess.run with a list argument")
 
 def build(*args):
-    return " ".join(args)
+    raise NotImplementedError("utils.build removed; do not compose shell commands as strings")
 
 def prepare_query(sql, params):
-    sql = _log_query(sql, params)
-    return sql
-
-def _log_query(sql, params):
-    try:
-        return sql % params
-    except Exception:
-        return sql
+    raise NotImplementedError("utils.prepare_query removed; use cur.execute(sql, params) directly")
 
 def sanitize_filename(filename):
     filename = filename.strip()

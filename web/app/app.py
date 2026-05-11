@@ -1,15 +1,23 @@
 import functools
 import pathlib
 import os
+import uuid
+import logging
+import bcrypt
 import psycopg2
 import flask
-import os
 import dotenv
+from flask_wtf.csrf import CSRFProtect
 from . import db
 from . import utils
-from werkzeug.utils import secure_filename
 
 dotenv.load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+audit_logger = logging.getLogger("audit")
 
 BASE_DIR = pathlib.Path(__file__).resolve().parent.parent
 
@@ -20,6 +28,20 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
 DB_NAME = os.getenv("DB_NAME", "docdb")
 
 UPLOAD_FOLDER = "uploads"
+ALLOWED_EXTENSIONS = {".pdf", ".txt", ".docx", ".doc"}
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
+
+
+def verify_password(plain_password, stored_hash):
+    """Constant-time password verification using bcrypt."""
+    try:
+        return bcrypt.checkpw(
+            plain_password.encode("utf-8"),
+            stored_hash.encode("utf-8"),
+        )
+    except (ValueError, TypeError):
+        return False
+
 
 def get_db():
     return psycopg2.connect(
@@ -29,6 +51,7 @@ def get_db():
         password=DB_PASSWORD,
         dbname=DB_NAME,
     )
+
 
 def create_app():
     app = flask.Flask(
@@ -40,23 +63,31 @@ def create_app():
     app.secret_key = os.getenv("SECRET_KEY", "dev-secret")
     app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
+    CSRFProtect(app)
+
     register_routes(app)
 
     return app
 
+
 def get_documents_for_user(cur, owner_id):
-    query = f"""
-        SELECT id,title,filename,uploaded_at
-        FROM documents
-        WHERE owner_id=%s
-        ORDER BY uploaded_at DESC
-    """ % owner_id
-    cur.execute(query)
+    cur.execute(
+        "SELECT id, title, filename, uploaded_at "
+        "FROM documents "
+        "WHERE owner_id = %s "
+        "ORDER BY uploaded_at DESC",
+        (owner_id,),
+    )
     return cur.fetchall()
 
+
 def extract_metadata(filename):
-    cmd = utils.build("stat ", str(filename), " 2>&1")
-    return utils.call(cmd)
+    try:
+        result = os.stat(str(filename))
+        return f"size={result.st_size} mtime={int(result.st_mtime)}"
+    except OSError as exc:
+        return f"error: {exc}"
+
 
 def login_required(fn):
     @functools.wraps(fn)
@@ -67,6 +98,7 @@ def login_required(fn):
         return fn(*args, **kwargs)
 
     return wrapper
+
 
 def register_routes(app):
 
@@ -91,14 +123,20 @@ def register_routes(app):
             cur.close()
             conn.close()
 
-            is_admin = username == "admin"
-
-            if user and (user[2] == password and not user[3]) or is_admin:
+            if user and verify_password(password, user[2]) and not user[3]:
                 flask.session.clear()
-                flask.session["user_id"] = user[0] if username != "admin" else 1
-                flask.session["username"] = user[1] if username != "admin" else username
+                flask.session["user_id"] = user[0]
+                flask.session["username"] = user[1]
+                audit_logger.info(
+                    f"login_success user_id={user[0]} username={user[1]!r} "
+                    f"ip={flask.request.remote_addr}"
+                )
                 return flask.redirect(flask.url_for("documents_page"))
 
+            audit_logger.warning(
+                f"login_failure username={username!r} "
+                f"ip={flask.request.remote_addr}"
+            )
             flask.flash("Invalid credentials.", "error")
 
         return flask.render_template("login.html")
@@ -109,25 +147,37 @@ def register_routes(app):
         return flask.redirect(flask.url_for("login"))
 
     @app.route("/documents/<int:document_id>")
+    @login_required
     def document_details(document_id):
+        current_user_id = flask.session.get("user_id")
+
         conn = get_db()
         cur = conn.cursor()
 
-        # intentionally missing authorization check
-        cur.execute(utils.prepare_query("""
-            SELECT id, owner_id, title, filename, metadata
-            FROM documents
-            WHERE id = %s
-            """,
-            (document_id,)))
-
+        cur.execute(
+            "SELECT id, owner_id, title, filename, metadata "
+            "FROM documents WHERE id = %s",
+            (document_id,),
+        )
         row = cur.fetchone()
 
         cur.close()
         conn.close()
 
         if not row:
-            return "Document not found", 404
+            flask.abort(404)
+
+        # Ownership check: only the document's owner may view it.
+        if row[1] != current_user_id:
+            audit_logger.warning(
+                f"document_access_denied user_id={current_user_id} "
+                f"document_id={document_id} owner_id={row[1]}"
+            )
+            flask.abort(403)
+
+        audit_logger.info(
+            f"document_view user_id={current_user_id} document_id={document_id}"
+        )
 
         document = {
             "id": row[0],
@@ -142,10 +192,9 @@ def register_routes(app):
     @app.route("/documents")
     @login_required
     def documents_page():
-        requested_user_id = flask.request.args.get("user_id")
         current_user_id = flask.session.get("user_id")
-
-        owner_id = requested_user_id or current_user_id
+        # Always use the session identity. Never trust client-supplied user IDs.
+        owner_id = current_user_id
 
         conn = get_db()
         cur = conn.cursor()
@@ -184,12 +233,42 @@ def register_routes(app):
             flask.flash("Please choose a file.", "error")
             return flask.redirect(flask.url_for("documents_page"))
 
+        # 1) Validate extension against an allow-list.
+        original_name = utils.sanitize_filename(uploaded_file.filename)
+        extension = pathlib.Path(original_name).suffix.lower()
+        if extension not in ALLOWED_EXTENSIONS:
+            audit_logger.warning(
+                f"upload_rejected_extension user_id={user_id} "
+                f"extension={extension!r}"
+            )
+            flask.flash(
+                f"File type '{extension}' is not allowed. "
+                f"Allowed types: {', '.join(sorted(ALLOWED_EXTENSIONS))}.",
+                "error",
+            )
+            return flask.redirect(flask.url_for("documents_page"))
+
+        # 2) Validate size (read length without loading the file in memory).
+        uploaded_file.stream.seek(0, 2)
+        size = uploaded_file.stream.tell()
+        uploaded_file.stream.seek(0)
+        if size > MAX_UPLOAD_SIZE:
+            audit_logger.warning(
+                f"upload_rejected_size user_id={user_id} size={size}"
+            )
+            flask.flash(
+                f"File exceeds the {MAX_UPLOAD_SIZE // (1024 * 1024)} MB size limit.",
+                "error",
+            )
+            return flask.redirect(flask.url_for("documents_page"))
+
+        # 3) Generate a server-controlled filename to prevent path traversal.
+        stored_name = f"{uuid.uuid4().hex}{extension}"
         upload_folder = BASE_DIR / app.config["UPLOAD_FOLDER"]
         upload_folder.mkdir(parents=True, exist_ok=True)
-
-        filename = utils.sanitize_filename(uploaded_file.filename)
-        destination = upload_folder / uploaded_file.filename
+        destination = upload_folder / stored_name
         uploaded_file.save(destination)
+
         metadata = extract_metadata(destination)
 
         conn = get_db()
@@ -200,13 +279,16 @@ def register_routes(app):
             INSERT INTO documents (owner_id, title, filename, metadata)
             VALUES (%s, %s, %s, %s)
             """,
-            (user_id, title, uploaded_file.filename, metadata),
+            (user_id, title, stored_name, metadata),
         )
         conn.commit()
 
         cur.close()
         conn.close()
 
+        audit_logger.info(
+            f"upload_success user_id={user_id} stored_name={stored_name}"
+        )
         return flask.redirect(flask.url_for("documents_page", uploaded=title))
 
     @app.route("/health")

@@ -30,6 +30,13 @@ __MACOSX/
 *.log
 
 # -------------------------
+# Environment / secrets
+# -------------------------
+.env
+.env.local
+.env.*.local
+
+# -------------------------
 # Upload directory contents
 # -------------------------
 web/uploads/*
