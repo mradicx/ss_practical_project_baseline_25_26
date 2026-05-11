@@ -98,7 +98,43 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bandit-results
-          path: bandit-results.sarif        
+          path: bandit-results.sarif  
+
+  semgrep:
+    name: Semgrep (multi-language SAST)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    container:
+      image: semgrep/semgrep
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+      - name: Run Semgrep
+        id: semgrep
+        continue-on-error: true
+        run: |
+          semgrep ci \
+            --config p/python \
+            --config p/flask \
+            --config p/owasp-top-ten \
+            --config p/github-actions \
+            --sarif --output semgrep-results.sarif
+        env:
+          SEMGREP_RULES: ""
+      - name: Upload Semgrep SARIF to Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep-results.sarif
+          category: semgrep
+      - name: Archive Semgrep report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-results
+          path: semgrep-results.sarif        
 
   build-and-push:
     runs-on: ubuntu-latest
