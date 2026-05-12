@@ -111,7 +111,7 @@ jobs:
         env:
           APP_BASE_URL: http://localhost:8000
         run: |
-          pytest -q tests/test_delivery_auth_flow.py
+          pytest -q tests/test_delivery_auth_flow.py tests/test_delivery_api.py
 
       - name: Run OWASP ZAP baseline scan
         id: zap
