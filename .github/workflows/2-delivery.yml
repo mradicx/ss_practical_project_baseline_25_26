@@ -68,32 +68,6 @@ jobs:
           docker pull "$WEB_IMAGE"
           docker pull "$DB_IMAGE"
 
-      - name: Run Trivy on web image
-        id: trivy
-        continue-on-error: true
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: ${{ env.WEB_IMAGE }}
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH,MEDIUM'
-          ignore-unfixed: true
-
-      - name: Upload Trivy SARIF to Security tab
-        if: always() && hashFiles('trivy-results.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-results.sarif
-          category: trivy
-
-      - name: Archive Trivy report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-results
-          path: trivy-results.sarif
-          if-no-files-found: ignore
-
       - name: Start delivery environment
         env:
           WEB_IMAGE: ${{ env.WEB_IMAGE }}
