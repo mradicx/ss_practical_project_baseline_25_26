@@ -100,6 +100,28 @@ def login_required(fn):
     return wrapper
 
 
+def admin_required(fn):
+    """Restricts a route to the admin account.
+
+    Must be applied AFTER @login_required so that an unauthenticated
+    request is redirected to /login (handled by login_required) rather
+    than aborted as 403. Identifies the admin by session username,
+    which is set during /login from the authenticated users row.
+    """
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        if flask.session.get("username") != "admin":
+            audit_logger.warning(
+                f"admin_access_denied user_id={flask.session.get('user_id')} "
+                f"username={flask.session.get('username')!r} "
+                f"path={flask.request.path}"
+            )
+            flask.abort(403)
+        return fn(*args, **kwargs)
+
+    return wrapper
+
+
 def register_routes(app):
 
     @app.route("/")
@@ -167,7 +189,6 @@ def register_routes(app):
         if not row:
             flask.abort(404)
 
-        # Ownership check: only the document's owner may view it.
         if row[1] != current_user_id:
             audit_logger.warning(
                 f"document_access_denied user_id={current_user_id} "
@@ -189,11 +210,52 @@ def register_routes(app):
 
         return flask.render_template("document_details.html", document=document)
 
+    @app.route("/documents/<int:document_id>/download")
+    @login_required
+    def download_document(document_id):
+        current_user_id = flask.session.get("user_id")
+
+        conn = get_db()
+        cur = conn.cursor()
+
+        cur.execute(
+            "SELECT id, owner_id, filename "
+            "FROM documents WHERE id = %s",
+            (document_id,),
+        )
+        row = cur.fetchone()
+
+        cur.close()
+        conn.close()
+
+        if not row:
+            flask.abort(404)
+
+        if row[1] != current_user_id:
+            audit_logger.warning(
+                f"download_access_denied user_id={current_user_id} "
+                f"document_id={document_id} owner_id={row[1]}"
+            )
+            flask.abort(403)
+
+        stored_name = row[2]
+        upload_folder = BASE_DIR / app.config["UPLOAD_FOLDER"]
+
+        audit_logger.info(
+            f"download_success user_id={current_user_id} "
+            f"document_id={document_id} stored_name={stored_name}"
+        )
+
+        # send_from_directory ensures stored_name is resolved relative to
+        # upload_folder and refuses path-traversal attempts.
+        return flask.send_from_directory(
+            str(upload_folder), stored_name, as_attachment=True
+        )
+
     @app.route("/documents")
     @login_required
     def documents_page():
         current_user_id = flask.session.get("user_id")
-        # Always use the session identity. Never trust client-supplied user IDs.
         owner_id = current_user_id
 
         conn = get_db()
@@ -233,7 +295,6 @@ def register_routes(app):
             flask.flash("Please choose a file.", "error")
             return flask.redirect(flask.url_for("documents_page"))
 
-        # 1) Validate extension against an allow-list.
         original_name = utils.sanitize_filename(uploaded_file.filename)
         extension = pathlib.Path(original_name).suffix.lower()
         if extension not in ALLOWED_EXTENSIONS:
@@ -248,7 +309,6 @@ def register_routes(app):
             )
             return flask.redirect(flask.url_for("documents_page"))
 
-        # 2) Validate size (read length without loading the file in memory).
         uploaded_file.stream.seek(0, 2)
         size = uploaded_file.stream.tell()
         uploaded_file.stream.seek(0)
@@ -262,7 +322,6 @@ def register_routes(app):
             )
             return flask.redirect(flask.url_for("documents_page"))
 
-        # 3) Generate a server-controlled filename to prevent path traversal.
         stored_name = f"{uuid.uuid4().hex}{extension}"
         upload_folder = BASE_DIR / app.config["UPLOAD_FOLDER"]
         upload_folder.mkdir(parents=True, exist_ok=True)
@@ -291,6 +350,87 @@ def register_routes(app):
         )
         return flask.redirect(flask.url_for("documents_page", uploaded=title))
 
+    @app.route("/admin/users")
+    @login_required
+    @admin_required
+    def admin_users():
+        current_user_id = flask.session.get("user_id")
+
+        conn = get_db()
+        cur = conn.cursor()
+
+        rows = db.get_all_users(cur)
+
+        cur.close()
+        conn.close()
+
+        users = [
+            {"id": row[0], "username": row[1], "is_disabled": row[2]}
+            for row in rows
+        ]
+
+        audit_logger.info(
+            f"admin_users_listed user_id={current_user_id} count={len(users)}"
+        )
+
+        return flask.render_template(
+            "users.html",
+            users=users,
+            current_user_id=current_user_id,
+            username=flask.session.get("username"),
+        )
+
+    @app.route("/admin/users/<int:user_id>/enable", methods=["POST"])
+    @login_required
+    @admin_required
+    def enable_user(user_id):
+        current_user_id = flask.session.get("user_id")
+
+        conn = get_db()
+        cur = conn.cursor()
+
+        db.enable_user_by_id(cur, user_id)
+        conn.commit()
+
+        cur.close()
+        conn.close()
+
+        audit_logger.info(
+            f"user_enabled by_user_id={current_user_id} target_user_id={user_id}"
+        )
+        flask.flash("User enabled.", "success")
+        return flask.redirect(flask.url_for("admin_users"))
+
+    @app.route("/admin/users/<int:user_id>/disable", methods=["POST"])
+    @login_required
+    @admin_required
+    def disable_user(user_id):
+        current_user_id = flask.session.get("user_id")
+
+        # Defence-in-depth: prevent admin from disabling themselves
+        # even if the UI is bypassed.
+        if user_id == current_user_id:
+            audit_logger.warning(
+                f"admin_self_disable_attempt user_id={current_user_id}"
+            )
+            flask.flash("Cannot disable your own account.", "error")
+            return flask.redirect(flask.url_for("admin_users"))
+
+        conn = get_db()
+        cur = conn.cursor()
+
+        db.disable_user_by_id(cur, user_id)
+        conn.commit()
+
+        cur.close()
+        conn.close()
+
+        audit_logger.info(
+            f"user_disabled by_user_id={current_user_id} target_user_id={user_id}"
+        )
+        flask.flash("User disabled.", "success")
+        return flask.redirect(flask.url_for("admin_users"))
+
     @app.route("/health")
     def health():
         try:
@@ -307,46 +447,13 @@ def register_routes(app):
     # ------------------------------------------------------------------
     # Planned / Not Yet Implemented Endpoints
     #
-    # The following routes are part of the intended system interface and
-    # are not implemented in the baseline version of the application.
+    # Document sharing operations remain out of scope for this delivery:
     #
-    # The expected behavior of these endpoints is summarized below.
+    #   POST /documents/<id>/share         (share with another user)
+    #   GET  /shared                       (list documents shared with you)
+    #   GET  /shared/<id>/download         (download a shared document)
     #
-    # Document operations
-    #
-    #   GET  /documents/<id>/download
-    #       Download the specified document.
-    #       Success: returns file contents (HTTP 200)
-    #       Errors: 404 if the document does not exist
-    #
-    #   POST /documents/<id>/share
-    #       Share a document with another user.
-    #       Form parameter:
-    #           shared_with  -> target user id
-    #       Success: redirect or confirmation (HTTP 302 or 200)
-    #
-    # Shared documents
-    #
-    #   GET  /shared
-    #       Display documents that were shared with the current user.
-    #       Success: HTTP 200
-    #
-    #   GET  /shared/<id>/download
-    #       Download a document that was shared with the current user.
-    #       Success: returns file contents (HTTP 200)
-    #
-    # Administration
-    #
-    #   GET  /admin/users
-    #       Display a list of users in the system.
-    #       Success: HTTP 200
-    #
-    #   POST /admin/users/<id>/enable
-    #       Enable a user account.
-    #       Success: redirect or confirmation (HTTP 302 or 200)
-    #
-    #   POST /admin/users/<id>/disable
-    #       Disable a user account.
-    #       Success: redirect or confirmation (HTTP 302 or 200)
-    #
+    # Implementation would require an additional document_shares
+    # association table in the database schema and corresponding
+    # templates
     # ------------------------------------------------------------------
