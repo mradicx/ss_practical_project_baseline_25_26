@@ -1,32 +1,56 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="card">
-  <h2>Registered users</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>ID</th>
-        <th>Username</th>
-        <th>Status</th>
-        <th>Action</th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for user in users %}
-      <tr>
-        <td>{{ user.id }}</td>
-        <td>{{ user.username }}</td>
-        <td>{% if user.is_disabled %}disabled{% else %}active{% endif %}</td>
-        <td>
-          {% if not user.is_disabled %}
-          <form method="post" action="{{ url_for('disable_user', user_id=user.id) }}">
-            <button type="submit">Disable</button>
-          </form>
-          {% endif %}
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+<section class="grid">
+  <div class="card">
+    <h2>User administration</h2>
+    <p class="muted">Manage user accounts on the platform.</p>
+
+    {% if users %}
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Username</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for user in users %}
+        <tr>
+          <td>{{ user.id }}</td>
+          <td>{{ user.username }}</td>
+          <td>
+            {% if user.is_disabled %}
+              <span style="color: red;">Disabled</span>
+            {% else %}
+              <span style="color: green;">Enabled</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if user.id != current_user_id %}
+              {% if user.is_disabled %}
+                <form method="post" action="{{ url_for('enable_user', user_id=user.id) }}" style="display: inline;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit">Enable</button>
+                </form>
+              {% else %}
+                <form method="post" action="{{ url_for('disable_user', user_id=user.id) }}" style="display: inline;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit">Disable</button>
+                </form>
+              {% endif %}
+            {% else %}
+              <span class="muted">(you)</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p>No users found.</p>
+    {% endif %}
+  </div>
 </section>
 {% endblock %}
