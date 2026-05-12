@@ -24,7 +24,8 @@
           <th>Title</th>
           <th>Filename</th>
           <th>Summary</th>
-          <th>Full</th>
+          <th>Details</th>
+          <th>Download</th>
         </tr>
       </thead>
       <tbody>
@@ -38,11 +39,16 @@
               Summary
             </button>
           </td>
-        <td>
-          <a href="{{ url_for('document_details', document_id=doc.id) }}">
-            Details
-          </a>
-        </td>
+          <td>
+            <a href="{{ url_for('document_details', document_id=doc.id) }}">
+              Details
+            </a>
+          </td>
+          <td>
+            <a href="{{ url_for('download_document', document_id=doc.id) }}">
+              Download
+            </a>
+          </td>
         </tr>
       {% endfor %}
       </tbody>
